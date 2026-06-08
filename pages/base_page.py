@@ -68,7 +68,51 @@ class BasePage:
     # ------------------------------------------------------------------
 
     def scroll_down(self, pixels: int = 600) -> None:
-        self.driver.execute_script(f"window.scrollBy(0, {pixels});")
+        """Scroll down by *pixels*.
+
+        Modern SPAs — including Twitch — pin ``overflow: hidden`` on
+        ``<html>`` / ``<body>`` and scroll a child container div instead.
+        ``window.scrollBy()`` has no effect in that layout.
+
+        This helper walks up the DOM from the first ``<article>`` / ``<main>``
+        element to find the nearest element that actually has
+        ``overflow: scroll | auto`` and a scrollable height, then scrolls that
+        container.  Falls back to ``window.scrollBy`` for plain pages.
+        """
+        self.driver.execute_script("""
+            (function(px) {
+                function findScrollable(el) {
+                    while (el && el !== document.documentElement) {
+                        var oy = window.getComputedStyle(el).overflowY;
+                        if ((oy === 'scroll' || oy === 'auto') &&
+                                el.scrollHeight > el.clientHeight) {
+                            return el;
+                        }
+                        el = el.parentElement;
+                    }
+                    return null;
+                }
+                var seed = document.querySelector('article, main, [role="main"]');
+                var container = seed ? findScrollable(seed.parentElement) : null;
+                if (container) {
+                    container.scrollTop += px;
+                } else {
+                    window.scrollBy(0, px);
+                }
+            })(arguments[0]);
+        """, pixels)
+
+    def hard_refresh(self) -> None:
+        """Force a full cache-bypass reload (equivalent to Ctrl+Shift+R).
+
+        Ensures the browser re-sends all request headers — including the
+        mobile User-Agent set by Chrome's device emulation — on every
+        resource request.  Blocks until ``document.readyState == 'complete'``.
+        """
+        self.driver.execute_script("location.reload(true);")
+        WebDriverWait(self.driver, 15).until(
+            lambda d: d.execute_script("return document.readyState;") == "complete"
+        )
 
     def click_and_switch_window(self, element: WebElement, timeout: int = 8) -> None:
         """Click *element* and switch focus to any new tab/window it opens.

@@ -88,6 +88,12 @@ class SearchPage(BasePage):
 
     @allure.step("Scroll channel results down {count} time(s)")
     def scroll_results(self, count: int) -> "SearchPage":
+        # Wait for at least one card to be present before scrolling.
+        # If we scroll while Twitch is still rendering the channel list, the
+        # SPA can reset the scroll position when the new DOM nodes attach —
+        # making the scroll appear to have never happened.
+        self._collect_channel_cards()
+
         pause  = self.config.get("twitch", {}).get("scroll_pause_seconds", 1.5)
         pixels = self.config.get("twitch", {}).get("scroll_amount_px", 600)
         for _ in range(count):

@@ -36,6 +36,12 @@ class HomePage(BasePage):
     @allure.step("Navigate to Twitch homepage")
     def navigate(self) -> "HomePage":
         self.driver.get(self._url)
+        # Hard-refresh so Chrome re-sends all headers (including the mobile
+        # User-Agent) for every resource on the page.  On the very first
+        # driver.get() call, Chrome's mobile emulation sometimes delivers a
+        # mixed-mode request; the forced cache-bypass reload ensures Twitch
+        # returns the full WAP build and the video player doesn't crash.
+        self.hard_refresh()
         self._modals.dismiss_cookie_banner()
         return self
 
