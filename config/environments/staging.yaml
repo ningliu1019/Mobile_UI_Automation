@@ -1,0 +1,18 @@
+env: staging
+
+browser:
+  # Staging can be slower — give it a little more breathing room
+  explicit_wait: 25
+  page_load_timeout: 40
+
+twitch:
+  # Confirmed from DevTools Recorder: mobile Twitch lives at m.twitch.tv
+  url: "https://m.twitch.tv"
+
+# Credentials are never stored here.
+# Set the matching variables in config/.env.staging (gitignored).
+# Reference them below with ${VAR_NAME} — the config loader substitutes at runtime.
+accounts:
+  test_user:
+    username: "${TWITCH_STAGING_USERNAME}"
+    password: "${TWITCH_STAGING_PASSWORD}"

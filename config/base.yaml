@@ -1,0 +1,31 @@
+device:
+  # Set use_named_device: true to use Chrome's built-in device profile (recommended)
+  # Set use_named_device: false to use custom width/height/pixel_ratio/user_agent below
+  use_named_device: true
+  name: "iPhone 12 Pro"
+
+  # Custom device metrics (only used when use_named_device: false)
+  width: 390
+  height: 844
+  pixel_ratio: 3.0
+  user_agent: >
+    Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)
+    AppleWebKit/605.1.15 (KHTML, like Gecko)
+    Version/15.0 Mobile/15E148 Safari/604.1
+
+browser:
+  headless: false
+  implicit_wait: 10
+  explicit_wait: 20
+  page_load_timeout: 30
+
+# URL and accounts are environment-specific — defined in environments/<env>.yaml
+twitch:
+  search_query: "StarCraft II"
+  scroll_count: 2
+  scroll_amount_px: 600   # pixels per scroll action
+  scroll_pause_seconds: 1.5
+  streamer_index: 0       # 0-based; 0 = first live channel in results
+
+screenshots:
+  directory: "screenshots"

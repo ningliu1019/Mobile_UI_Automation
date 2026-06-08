@@ -1,0 +1,17 @@
+env: production
+
+browser:
+  headless: false
+  implicit_wait: 10
+  explicit_wait: 20
+  page_load_timeout: 30
+
+twitch:
+  url: "https://m.twitch.tv"
+
+# Credentials are never stored here.
+# Set the matching variables in config/.env.production (gitignored).
+accounts:
+  test_user:
+    username: "${TWITCH_PROD_USERNAME}"
+    password: "${TWITCH_PROD_PASSWORD}"

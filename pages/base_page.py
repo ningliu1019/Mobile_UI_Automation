@@ -1,0 +1,128 @@
+import os
+import time
+
+import allure
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+
+class BasePage:
+    """Base class for all page objects. Provides shared wait, scroll,
+    and screenshot utilities so individual pages stay focused on their own
+    locators and actions."""
+
+    def __init__(self, driver: WebDriver, config: dict):
+        self.driver = driver
+        self.config = config
+        self._timeout = config.get("browser", {}).get("explicit_wait", 20)
+
+    # ------------------------------------------------------------------
+    # Wait helpers
+    # ------------------------------------------------------------------
+
+    def wait_for_element(self, locator: tuple, timeout: int = None) -> WebElement:
+        t = timeout or self._timeout
+        return WebDriverWait(self.driver, t).until(
+            EC.element_to_be_clickable(locator)
+        )
+
+    def wait_for_elements(self, locator: tuple, timeout: int = None) -> list:
+        t = timeout or self._timeout
+        return WebDriverWait(self.driver, t).until(
+            EC.presence_of_all_elements_located(locator)
+        )
+
+    def wait_for_element_any(self, locators: list, timeout: int = None) -> WebElement:
+        """Return the first element that becomes clickable from a list of locators."""
+        t = timeout or self._timeout
+        deadline = time.time() + t
+
+        while time.time() < deadline:
+            for locator in locators:
+                try:
+                    el = self.driver.find_element(*locator)
+                    if el.is_displayed():
+                        return el
+                except Exception:
+                    pass
+            time.sleep(0.3)
+
+        raise TimeoutException(
+            f"None of the following locators were found within {t}s: {locators}"
+        )
+
+    def is_present(self, locator: tuple, timeout: int = 5) -> bool:
+        try:
+            WebDriverWait(self.driver, timeout).until(
+                EC.presence_of_element_located(locator)
+            )
+            return True
+        except TimeoutException:
+            return False
+
+    # ------------------------------------------------------------------
+    # Interaction helpers
+    # ------------------------------------------------------------------
+
+    def scroll_down(self, pixels: int = 600) -> None:
+        self.driver.execute_script(f"window.scrollBy(0, {pixels});")
+
+    def click_and_switch_window(self, element: WebElement, timeout: int = 8) -> None:
+        """Click *element* and switch focus to any new tab/window it opens.
+
+        Mobile Twitch opens streamer pages in a new tab. Without this,
+        Selenium stays on the (now-closed) original tab and every subsequent
+        call raises NoSuchWindowException.
+
+        If no new window appears within *timeout* seconds, the click is still
+        performed but the driver stays on the current window.
+        """
+        original_handle = self.driver.current_window_handle
+        original_handles = set(self.driver.window_handles)
+
+        element.click()
+
+        try:
+            # Wait until a new window handle appears
+            WebDriverWait(self.driver, timeout).until(
+                lambda d: set(d.window_handles) - original_handles
+            )
+            new_handles = set(self.driver.window_handles) - original_handles
+            self.driver.switch_to.window(next(iter(new_handles)))
+        except TimeoutException:
+            # No new window — navigation happened in the same tab, nothing to do
+            pass
+
+    def dismiss_if_present(self, locator: tuple, timeout: int = 4) -> bool:
+        """Click an element if it exists; silently skip if not found."""
+        if not self.is_present(locator, timeout):
+            return False
+        try:
+            self.driver.find_element(*locator).click()
+            return True
+        except (NoSuchElementException, Exception):
+            return False
+
+    # ------------------------------------------------------------------
+    # Screenshot
+    # ------------------------------------------------------------------
+
+    def take_screenshot(self, name: str = "screenshot") -> str:
+        directory = self.config.get("screenshots", {}).get("directory", "screenshots")
+        os.makedirs(directory, exist_ok=True)
+
+        timestamp = int(time.time())
+        filepath = os.path.join(directory, f"{name}_{timestamp}.png")
+        self.driver.save_screenshot(filepath)
+
+        with open(filepath, "rb") as fh:
+            allure.attach(
+                fh.read(),
+                name=name,
+                attachment_type=allure.attachment_type.PNG,
+            )
+
+        return filepath
