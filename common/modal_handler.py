@@ -42,6 +42,20 @@ class ModalHandler(BasePage):
     _APP_PROMPT_DISMISS = (By.CSS_SELECTOR,
                             'button[data-a-target="dismiss-app-prompt"]')
 
+    # "Open in App" bottom sheet shown on every fresh mobile-WAP visit.
+    # Single XPath combines zh-TW label and EN fallback so only one
+    # is_present() call is needed — avoids wasting 3× the timeout.
+    _OPEN_IN_APP_CONTINUE = (
+        By.XPATH,
+        "//*[self::button or self::a or @role='button']"
+        "["
+        "  contains(normalize-space(.), '繼續使用網頁版')"
+        "  or (contains(., 'Continue') and ("
+        "    contains(., 'web') or contains(., 'browser') or contains(., 'website')"
+        "  ))"
+        "]",
+    )
+
     # Age-gate / login-required overlay
     _AGE_GATE_CONFIRM = (By.CSS_SELECTOR, '[data-a-target="age-gate-confirm"]')
 
@@ -51,25 +65,34 @@ class ModalHandler(BasePage):
 
     @allure.step("Dismiss cookie / consent banner")
     def dismiss_cookie_banner(self) -> bool:
-        return self.dismiss_if_present(self._COOKIE_ACCEPT, timeout=2)
+        return self.dismiss_if_present(self._COOKIE_ACCEPT, timeout=1)
 
     @allure.step("Dismiss mature-content warning")
     def dismiss_mature_content(self) -> bool:
-        return self.dismiss_if_present(self._MATURE_CONTENT_ACCEPT, timeout=2)
+        return self.dismiss_if_present(self._MATURE_CONTENT_ACCEPT, timeout=1)
 
     @allure.step("Dismiss 'Get the App' prompt")
     def dismiss_app_prompt(self) -> bool:
-        return self.dismiss_if_present(self._APP_PROMPT_DISMISS, timeout=2)
+        return self.dismiss_if_present(self._APP_PROMPT_DISMISS, timeout=1)
+
+    @allure.step("Dismiss 'Open in App' sheet (continue on web)")
+    def dismiss_open_in_app(self) -> bool:
+        """Click 'Continue on web' (繼續使用網頁版) on the mobile app-banner sheet.
+
+        Never clicks the 'Open in App' option — that fires a twitch://
+        redirect and closes the tab.  Returns True if the sheet was dismissed.
+        """
+        return self.dismiss_if_present(self._OPEN_IN_APP_CONTINUE, timeout=1)
 
     @allure.step("Dismiss age gate")
     def dismiss_age_gate(self) -> bool:
-        return self.dismiss_if_present(self._AGE_GATE_CONFIRM, timeout=2)
+        return self.dismiss_if_present(self._AGE_GATE_CONFIRM, timeout=1)
 
     @allure.step("Close generic modal")
     def close_modal(self) -> bool:
         """Try the most common close-button patterns in order."""
         for locator in (self._ARIA_CLOSE, self._DATA_CLOSE):
-            if self.dismiss_if_present(locator, timeout=2):
+            if self.dismiss_if_present(locator, timeout=1):
                 return True
         return False
 
@@ -81,6 +104,7 @@ class ModalHandler(BasePage):
         immediately so no time is wasted when (as is common) no pop-up shows.
         """
         self.dismiss_cookie_banner()
+        self.dismiss_open_in_app()
         self.dismiss_age_gate()
         self.dismiss_mature_content()
         self.dismiss_app_prompt()

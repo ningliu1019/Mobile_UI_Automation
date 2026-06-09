@@ -1,22 +1,23 @@
 device:
-  # Set use_named_device: true to use Chrome's built-in device profile (recommended)
-  # Set use_named_device: false to use custom width/height/pixel_ratio/user_agent below
-  use_named_device: true
+  # use_named_device: false — custom metrics + Chrome-for-Android UA.
+  # "iPhone 12 Pro" (iOS Safari UA) is inconsistent with the Chromium engine
+  # and causes Twitch to serve HLS content Chrome can't play. A Chrome-for-Android
+  # UA matches the actual engine and reliably gets the mobile player.
+  use_named_device: false
   name: "iPhone 12 Pro"
 
   # Custom device metrics (only used when use_named_device: false)
   width: 390
   height: 844
   pixel_ratio: 3.0
-  user_agent: >
-    Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)
-    AppleWebKit/605.1.15 (KHTML, like Gecko)
-    Version/15.0 Mobile/15E148 Safari/604.1
+  user_agent: >-
+    Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36
+    (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36
 
 browser:
   headless: false
-  implicit_wait: 10
-  explicit_wait: 20
+  implicit_wait: 4
+  explicit_wait: 15
   page_load_timeout: 30
 
 # URL and accounts are environment-specific — defined in environments/<env>.yaml
@@ -24,7 +25,7 @@ twitch:
   search_query: "StarCraft II"
   scroll_count: 2
   scroll_amount_px: 600   # pixels per scroll action
-  scroll_pause_seconds: 1.5
+  scroll_pause_seconds: 0.8
   streamer_index: 0       # 0-based; 0 = first live channel in results
 
 screenshots:

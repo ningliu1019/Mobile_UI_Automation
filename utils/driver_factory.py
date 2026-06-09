@@ -13,8 +13,46 @@ class DriverFactory:
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
 
+        # Register an anti-detection script that runs before any page JS on
+        # every navigation in this tab:
+        #  1. Delete ChromeDriver's cdc_* fingerprint variables.
+        #  2. Mask navigator.webdriver.
+        #  3. Block twitch:// / intent:// redirects that would close the tab.
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            "source": r"""
+                (function() {
+                    for (var k of Object.getOwnPropertyNames(window)) {
+                        if (k.startsWith('cdc_')) {
+                            try { delete window[k]; } catch(e) {}
+                        }
+                    }
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                        configurable: true
+                    });
+                    var _blocked = function(u) {
+                        return /^(twitch|intent):\/\//i.test(String(u));
+                    };
+                    var _d = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+                    if (_d && _d.set) {
+                        Object.defineProperty(Location.prototype, 'href', {
+                            get: _d.get,
+                            set: function(u) { if (!_blocked(u)) _d.set.call(this, u); },
+                            configurable: true
+                        });
+                    }
+                    ['assign', 'replace'].forEach(function(fn) {
+                        var _orig = Location.prototype[fn];
+                        Location.prototype[fn] = function(u) {
+                            if (!_blocked(u)) _orig.call(this, u);
+                        };
+                    });
+                })();
+            """
+        })
+
         browser_cfg = config.get("browser", {})
-        driver.implicitly_wait(browser_cfg.get("implicit_wait", 10))
+        driver.implicitly_wait(0)  # keep 0 — see comment in _build_options
         driver.set_page_load_timeout(browser_cfg.get("page_load_timeout", 30))
 
         return driver
@@ -23,9 +61,27 @@ class DriverFactory:
     def _build_options(config: dict) -> Options:
         options = Options()
 
-        options.add_experimental_option(
-            "mobileEmulation", DriverFactory._mobile_emulation(config)
+        # Real Google Chrome binary — includes licensed H.264 decoder.
+        # ChromeDriver's bundled Chromium lacks H.264; Twitch HLS streams use
+        # H.264 and fail with error #3000 (decode error) on Chromium builds.
+        options.binary_location = (
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         )
+
+        mobile_emulation = DriverFactory._mobile_emulation(config)
+        options.add_experimental_option("mobileEmulation", mobile_emulation)
+
+        ua = mobile_emulation.get("userAgent") or config.get("device", {}).get("user_agent", "")
+        if ua:
+            options.add_argument(f"--user-agent={ua.strip()}")
+
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option("useAutomationExtension", False)
+        options.add_experimental_option("prefs", {
+            "protocol_handler.excluded_schemes": {"twitch": True},
+        })
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--autoplay-policy=no-user-gesture-required")
 
         browser_cfg = config.get("browser", {})
         if browser_cfg.get("headless", False):

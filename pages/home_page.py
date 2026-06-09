@@ -36,13 +36,20 @@ class HomePage(BasePage):
     @allure.step("Navigate to Twitch homepage")
     def navigate(self) -> "HomePage":
         self.driver.get(self._url)
-        # Hard-refresh so Chrome re-sends all headers (including the mobile
-        # User-Agent) for every resource on the page.  On the very first
-        # driver.get() call, Chrome's mobile emulation sometimes delivers a
-        # mixed-mode request; the forced cache-bypass reload ensures Twitch
-        # returns the full WAP build and the video player doesn't crash.
+        # Hard-refresh required after every initial Twitch navigation.
+        # Chrome's mobile device emulation activates AFTER the first
+        # driver.get() request is already in flight, so the first page load
+        # can arrive with desktop UA headers and cache — Twitch then serves
+        # the desktop JS player and DOM structure, which crashes under touch
+        # emulation (error #3000).  A cache-bypass reload (≡ Ctrl+Shift+R)
+        # forces Chrome to re-send ALL request headers with the mobile
+        # User-Agent, and Twitch returns the correct mobile WAP build.
         self.hard_refresh()
         self._modals.dismiss_cookie_banner()
+        # The "Open in App" bottom sheet appears on every fresh visit and covers
+        # the bottom nav (the Browse button).  Dismiss it via "Continue on web"
+        # so the rest of the flow can interact with the page.
+        self._modals.dismiss_open_in_app()
         return self
 
     @allure.step("Click Browse to open search")

@@ -2,7 +2,28 @@ import os
 import time
 
 import allure
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import InvalidSessionIdException, NoSuchElementException, NoSuchWindowException, TimeoutException
+
+# Injected into new tabs immediately after switch — the CDP
+# Page.addScriptToEvaluateOnNewDocument registered during driver creation only
+# covers the original tab; new tabs are a fresh CDP target with no protection.
+_REDIRECT_BLOCKER_JS = r"""
+(function() {
+    var b = function(u) { return /^(twitch|intent):\/\//i.test(String(u)); };
+    var d = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+    if (d && d.set) {
+        Object.defineProperty(Location.prototype, 'href', {
+            get: d.get,
+            set: function(u) { if (!b(u)) d.set.call(this, u); },
+            configurable: true
+        });
+    }
+    ['assign', 'replace'].forEach(function(fn) {
+        var o = Location.prototype[fn];
+        Location.prototype[fn] = function(u) { if (!b(u)) o.call(this, u); };
+    });
+})();
+"""
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
@@ -60,7 +81,7 @@ class BasePage:
                 EC.presence_of_element_located(locator)
             )
             return True
-        except TimeoutException:
+        except (TimeoutException, NoSuchWindowException, InvalidSessionIdException):
             return False
 
     # ------------------------------------------------------------------
@@ -136,6 +157,19 @@ class BasePage:
             )
             new_handles = set(self.driver.window_handles) - original_handles
             self.driver.switch_to.window(next(iter(new_handles)))
+            # Re-apply the twitch:// redirect blocker on the new tab.
+            # CDP addScriptToEvaluateOnNewDocument is per-target; the script
+            # registered at driver creation only covers the original tab.
+            # execute_cdp_cmd registers it for future navigations (hard refresh),
+            # execute_script patches the already-loaded page immediately.
+            try:
+                self.driver.execute_cdp_cmd(
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    {"source": _REDIRECT_BLOCKER_JS},
+                )
+                self.driver.execute_script(_REDIRECT_BLOCKER_JS)
+            except Exception:
+                pass
         except TimeoutException:
             # No new window — navigation happened in the same tab, nothing to do
             pass
