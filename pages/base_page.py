@@ -22,6 +22,8 @@ _REDIRECT_BLOCKER_JS = r"""
         var o = Location.prototype[fn];
         Location.prototype[fn] = function(u) { if (!b(u)) o.call(this, u); };
     });
+    var _wo = window.open;
+    window.open = function(u) { if (u && b(u)) return null; return _wo.apply(window, arguments); };
 })();
 """
 from selenium.webdriver.remote.webdriver import WebDriver

@@ -47,6 +47,8 @@ class DriverFactory:
                             if (!_blocked(u)) _orig.call(this, u);
                         };
                     });
+                    var _wo = window.open;
+                    window.open = function(u) { if (u && _blocked(u)) return null; return _wo.apply(window, arguments); };
                 })();
             """
         })

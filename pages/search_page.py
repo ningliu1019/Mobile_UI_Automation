@@ -117,8 +117,17 @@ class SearchPage(BasePage):
             )
 
         top_card = self._top_visible_card(cards)
-        # Use click_and_switch_window: Twitch opens streamer pages in a new tab
-        self.click_and_switch_window(top_card)
+
+        # Navigate directly to the channel URL instead of simulating a tap.
+        # A raw click triggers Twitch's twitch:// deep-link via window.open(),
+        # which fires macOS's protocol handler and crashes the Chrome session.
+        # Extracting the HTTPS href and calling driver.get() bypasses all
+        # protocol-redirect machinery.
+        channel_url = self._channel_url_for_card(top_card)
+        if channel_url:
+            self.driver.get(channel_url)
+        else:
+            self.click_and_switch_window(top_card)
 
     def results_count(self) -> int:
         """Return the number of visible streamer cards on the page."""
@@ -141,6 +150,17 @@ class SearchPage(BasePage):
             except Exception:
                 continue
         return []
+
+    def _channel_url_for_card(self, card) -> str:
+        """Return the absolute HTTPS Twitch channel URL for *card*, or empty string."""
+        return self.driver.execute_script("""
+            var el = arguments[0];
+            var article = el.closest('article') || el;
+            var a = article.querySelector('a[href]') || el.closest('a[href]');
+            if (!a) return '';
+            var url = a.href;
+            return /^https:\\/\\/(www\\.)?twitch\\.tv\\//i.test(url) ? url : '';
+        """, card) or ""
 
     def _top_visible_card(self, cards: list):
         """Return the card whose top edge is closest to (and at or below)
