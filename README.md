@@ -8,9 +8,6 @@ The framework follows the **Page Object Model** with a three-layer architecture 
 
 ## Demo
 
-<!-- After recording your test run, replace the line below with the actual GIF -->
-> **TODO:** Record a GIF of the test running locally (QuickTime → File › New Screen Recording, or `asciinema` / `terminalizer`) and add it here.
-
 ![test-run demo](docs/demo.gif)
 
 ---
