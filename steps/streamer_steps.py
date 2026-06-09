@@ -27,9 +27,16 @@ class StreamerSteps:
     def capture_screenshot(self) -> str:
         return self._streamer.capture_screenshot()
 
-    @allure.step("Handle pop-ups, wait for load, and capture screenshot")
-    def view_and_capture(self) -> str:
-        """Full post-navigation flow in one reusable step."""
+    @allure.step("Handle pop-ups, wait for load, verify player, and capture screenshot")
+    def view_and_verify(self) -> dict:
+        """Full post-navigation flow in one reusable step.
+
+        Dismisses pop-ups, waits for the player, captures a screenshot, and
+        returns a status dict for the test to assert on:
+            {url, player_present, player_error, video_playing, screenshot}
+        """
         self.dismiss_popups()
         self.wait_for_load()
-        return self.capture_screenshot()
+        status = self._streamer.status()
+        status["screenshot"] = self.capture_screenshot()
+        return status

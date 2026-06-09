@@ -56,7 +56,10 @@ def _path(*parts: str) -> str:
 
 def _load_yaml(filepath: str) -> dict:
     with open(filepath, "r") as fh:
-        return yaml.safe_load(fh) or {}
+        try:
+            return yaml.safe_load(fh) or {}
+        except yaml.YAMLError as e:
+            raise yaml.YAMLError(f"Failed to parse YAML config '{filepath}': {e}") from e
 
 
 def _load_dotenv(filepath: str) -> None:

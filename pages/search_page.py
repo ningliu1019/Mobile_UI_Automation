@@ -1,6 +1,11 @@
 import time
 
 import allure
+from selenium.common.exceptions import (
+    InvalidSelectorException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
@@ -14,10 +19,11 @@ class SearchPage(BasePage):
 
     Confirmed flow from DevTools Recorder (2025-06-08):
       1. After clicking Browse the search input is inside #twilight-sticky-header-root
-      2. Type query then press Enter → navigates to game category page
-      3. Streamer cards are <article> > <button> > <img src="live_user_*">
-      4. After scrolling, "select streamer" means the card at the TOP of the
-         current viewport — not necessarily index 0 of the full list.
+      2. Type query then press Enter → navigates to the search results page
+      3. Live streamer cards are <article> > <button> with an
+         <img src="live_user_*"> thumbnail.
+      4. After scrolling, "select one streamer" means the card at the TOP of the
+         current viewport (see select_top_visible_streamer).
     """
 
     # ------------------------------------------------------------------
@@ -78,10 +84,10 @@ class SearchPage(BasePage):
 
     @allure.step("Click 頻道 (Channels) tab")
     def click_channels_tab(self) -> "SearchPage":
-        """Click the 頻道 / Channels tab to filter results to live channels only.
+        """Click the 頻道 / Channels tab to filter results to channels.
 
-        This tab appears after the search results page loads.
-        Selectors will be updated once the real HTML is confirmed.
+        The channels list contains both live and offline channels; it appears
+        after the search results page loads.
         """
         self.wait_for_element_any(self._CHANNELS_TAB).click()
         return self
@@ -102,12 +108,18 @@ class SearchPage(BasePage):
         return self
 
     @allure.step("Select the streamer at the top of the current screen")
-    def select_top_visible_streamer(self) -> None:
-        """Click the first streamer card whose top edge is visible in the viewport.
+    def select_top_visible_streamer(self) -> str:
+        """Open the live streamer at the top of the viewport and return its name.
 
-        After scrolling, cards above the fold are off-screen — this picks the
-        topmost card actually visible right now, matching the assignment spec:
-        'scroll down 2 times → select the streamer at the top of the screen'.
+        Matches the assignment spec ("scroll down 2 times → select one
+        streamer"): picks the topmost live card currently visible, then
+        navigates directly to the channel URL on the configured MOBILE host.
+
+        driver.get() is used instead of a tap: a raw click triggers Twitch's
+        twitch:// deep-link via window.open(), which fires the OS protocol
+        handler and can crash the tab. Building the URL on m.twitch.tv (not
+        www) avoids the www→m ``?desktop-redirect=true`` bounce, which combined
+        with the page's hard refresh would drop the player into a #3000 state.
         """
         cards = self._collect_channel_cards()
         if not cards:
@@ -115,23 +127,14 @@ class SearchPage(BasePage):
                 "No live streamer cards found. "
                 "Twitch DOM may have changed — check _CHANNEL_CARD_SELECTORS."
             )
-
-        top_card = self._top_visible_card(cards)
-
-        # Navigate directly to the channel URL instead of simulating a tap.
-        # A raw click triggers Twitch's twitch:// deep-link via window.open(),
-        # which fires macOS's protocol handler and crashes the Chrome session.
-        # Extracting the HTTPS href and calling driver.get() bypasses all
-        # protocol-redirect machinery.
-        channel_url = self._channel_url_for_card(top_card)
-        if channel_url:
-            self.driver.get(channel_url)
-        else:
-            self.click_and_switch_window(top_card)
-
-    def results_count(self) -> int:
-        """Return the number of visible streamer cards on the page."""
-        return len(self._collect_channel_cards())
+        name = self._channel_name_for_card(self._top_visible_card(cards))
+        if not name:
+            raise RuntimeError(
+                "Could not extract a channel name from the selected card."
+            )
+        base = self.config.get("twitch", {}).get("url", "https://m.twitch.tv").rstrip("/")
+        self.driver.get(f"{base}/{name}")
+        return name
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -147,44 +150,46 @@ class SearchPage(BasePage):
                 visible = [e for e in elements if e.is_displayed()]
                 if visible:
                     return visible
-            except Exception:
+            # TimeoutException: selector matched nothing in time.
+            # InvalidSelectorException: a `:has()` selector this browser build
+            # doesn't support.
+            # StaleElementReferenceException: the SPA re-rendered between match
+            # and the is_displayed() check.
+            # Fall through to the next strategy in every case.
+            except (TimeoutException, InvalidSelectorException,
+                    StaleElementReferenceException):
                 continue
         return []
 
-    def _channel_url_for_card(self, card) -> str:
-        """Return the absolute HTTPS Twitch channel URL for *card*, or empty string.
+    def _channel_name_for_card(self, card) -> str:
+        """Extract the channel login name for a live card, or '' if not found.
 
-        Tries two strategies in order:
-        1. Walk up to an <a href="https://www.twitch.tv/..."> ancestor.
-        2. Parse the channel name from the live_user_<name> thumbnail src.
-           Twitch search cards use <button> elements with no href, but the
-           preview image always contains the channel name in its URL.
+        The live preview thumbnail's src always carries the channel name
+        (live_user_<name>-WxH.jpg); falls back to an <a href> ancestor.
         """
-        return self.driver.execute_script("""
+        return self.driver.execute_script(r"""
             var el = arguments[0];
             var article = el.closest('article') || el;
-            var a = article.querySelector('a[href]') || el.closest('a[href]');
-            if (a && /^https:\\/\\/(www\\.)?twitch\\.tv\\//i.test(a.href)) {
-                return a.href;
-            }
             var img = article.querySelector('img[src*="live_user"]');
             if (img) {
-                var m = img.src.match(/live_user_([^\\-\\/]+)/);
-                if (m && m[1]) return 'https://www.twitch.tv/' + m[1];
+                var m = img.src.match(/live_user_([^\-\/]+)/);
+                if (m && m[1]) return m[1];
+            }
+            var a = article.querySelector('a[href*="twitch.tv/"]') || el.closest('a[href]');
+            if (a) {
+                var href = a.getAttribute('href') || '';
+                var mm = href.match(/twitch\.tv\/([^\/?#]+)/i) || href.match(/^\/([^\/?#]+)/);
+                if (mm && mm[1]) return mm[1];
             }
             return '';
         """, card) or ""
 
     def _top_visible_card(self, cards: list):
-        """Return the card whose top edge is closest to (and at or below)
-        the top of the current viewport.
+        """Return the card whose top edge is closest to (and at or below) the
+        top of the current viewport — the one the user sees at the top now.
 
-        Uses getBoundingClientRect().top:
-          > 0  → below the viewport top   (visible or below fold)
-          < 0  → above the viewport top   (scrolled past / off-screen)
-
-        We pick the card with the smallest non-negative top value — i.e.
-        the one sitting right at the top of what the user currently sees.
+        getBoundingClientRect().top: > 0 below the fold, < 0 scrolled past. We
+        pick the smallest non-negative top; if all are above the fold, the last.
         """
         candidates = []
         for card in cards:
@@ -193,11 +198,7 @@ class SearchPage(BasePage):
             )
             if top_px >= -5:   # -5px tolerance for sub-pixel rounding
                 candidates.append((top_px, card))
-
         if candidates:
             candidates.sort(key=lambda x: x[0])
             return candidates[0][1]
-
-        # Fallback: all cards are above the fold — return the last one
-        # (closest to the bottom of the scrolled-past area).
         return cards[-1]

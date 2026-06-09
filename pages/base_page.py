@@ -2,7 +2,20 @@ import os
 import time
 
 import allure
-from selenium.common.exceptions import InvalidSessionIdException, NoSuchElementException, NoSuchWindowException, TimeoutException
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    ElementNotInteractableException,
+    InvalidSelectorException,
+    InvalidSessionIdException,
+    NoSuchElementException,
+    NoSuchWindowException,
+    StaleElementReferenceException,
+    TimeoutException,
+)
+from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 # Injected into new tabs immediately after switch — the CDP
 # Page.addScriptToEvaluateOnNewDocument registered during driver creation only
@@ -26,10 +39,6 @@ _REDIRECT_BLOCKER_JS = r"""
     window.open = function(u) { if (u && b(u)) return null; return _wo.apply(window, arguments); };
 })();
 """
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.remote.webelement import WebElement
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
 
 
 class BasePage:
@@ -47,20 +56,14 @@ class BasePage:
     # ------------------------------------------------------------------
 
     def wait_for_element(self, locator: tuple, timeout: int = None) -> WebElement:
-        t = timeout or self._timeout
+        t = timeout if timeout is not None else self._timeout
         return WebDriverWait(self.driver, t).until(
             EC.element_to_be_clickable(locator)
         )
 
-    def wait_for_elements(self, locator: tuple, timeout: int = None) -> list:
-        t = timeout or self._timeout
-        return WebDriverWait(self.driver, t).until(
-            EC.presence_of_all_elements_located(locator)
-        )
-
     def wait_for_element_any(self, locators: list, timeout: int = None) -> WebElement:
         """Return the first element that becomes clickable from a list of locators."""
-        t = timeout or self._timeout
+        t = timeout if timeout is not None else self._timeout
         deadline = time.time() + t
 
         while time.time() < deadline:
@@ -69,7 +72,8 @@ class BasePage:
                     el = self.driver.find_element(*locator)
                     if el.is_displayed():
                         return el
-                except Exception:
+                except (NoSuchElementException, StaleElementReferenceException,
+                        InvalidSelectorException):
                     pass
             time.sleep(0.3)
 
@@ -147,7 +151,6 @@ class BasePage:
         If no new window appears within *timeout* seconds, the click is still
         performed but the driver stays on the current window.
         """
-        original_handle = self.driver.current_window_handle
         original_handles = set(self.driver.window_handles)
 
         element.click()
@@ -183,7 +186,8 @@ class BasePage:
         try:
             self.driver.find_element(*locator).click()
             return True
-        except (NoSuchElementException, Exception):
+        except (NoSuchElementException, StaleElementReferenceException,
+                ElementClickInterceptedException, ElementNotInteractableException):
             return False
 
     # ------------------------------------------------------------------

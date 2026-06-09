@@ -1,3 +1,7 @@
+import os
+import platform
+from typing import Optional
+
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -6,6 +10,24 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 class DriverFactory:
     """Creates and configures a Chrome WebDriver with mobile emulation."""
+
+    # Per-OS default install locations of the *real* Google Chrome binary.
+    # The real binary ships a licensed H.264 decoder; ChromeDriver's bundled
+    # Chromium lacks it and Twitch HLS (H.264) fails with error #3000.
+    _CHROME_BINARIES = {
+        "Darwin": [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        ],
+        "Windows": [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        ],
+        "Linux": [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/opt/google/chrome/chrome",
+        ],
+    }
 
     @staticmethod
     def create_driver(config: dict) -> webdriver.Chrome:
@@ -66,16 +88,16 @@ class DriverFactory:
         # Real Google Chrome binary — includes licensed H.264 decoder.
         # ChromeDriver's bundled Chromium lacks H.264; Twitch HLS streams use
         # H.264 and fail with error #3000 (decode error) on Chromium builds.
-        options.binary_location = (
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        )
+        binary = DriverFactory._chrome_binary(config)
+        if binary:
+            options.binary_location = binary
 
         mobile_emulation = DriverFactory._mobile_emulation(config)
         options.add_experimental_option("mobileEmulation", mobile_emulation)
-
-        ua = mobile_emulation.get("userAgent") or config.get("device", {}).get("user_agent", "")
-        if ua:
-            options.add_argument(f"--user-agent={ua.strip()}")
+        # NOTE: the User-Agent is set by the mobileEmulation profile itself
+        # (deviceName carries its own UA; custom metrics carry "userAgent").
+        # A separate --user-agent arg is therefore redundant and would even
+        # contradict a named device, so it is intentionally not added here.
 
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
@@ -95,6 +117,25 @@ class DriverFactory:
         options.add_argument("--disable-popup-blocking")
 
         return options
+
+    @staticmethod
+    def _chrome_binary(config: dict) -> Optional[str]:
+        """Resolve the real Google Chrome binary path in a cross-platform way.
+
+        Order of precedence:
+          1. ``browser.chrome_binary`` config override (any OS / custom install).
+          2. The first existing per-OS default location.
+          3. ``None`` — let Selenium locate Chrome on PATH as a last resort.
+        """
+        configured = config.get("browser", {}).get("chrome_binary")
+        if configured:
+            return configured
+
+        for candidate in DriverFactory._CHROME_BINARIES.get(platform.system(), []):
+            if os.path.exists(candidate):
+                return candidate
+
+        return None
 
     @staticmethod
     def _mobile_emulation(config: dict) -> dict:

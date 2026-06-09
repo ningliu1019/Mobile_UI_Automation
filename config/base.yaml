@@ -4,7 +4,7 @@ device:
   # and causes Twitch to serve HLS content Chrome can't play. A Chrome-for-Android
   # UA matches the actual engine and reliably gets the mobile player.
   use_named_device: false
-  name: "iPhone 12 Pro"
+  name: "iPhone 12 Pro"   # only used when use_named_device: true
 
   # Custom device metrics (only used when use_named_device: false)
   width: 390
@@ -16,17 +16,19 @@ device:
 
 browser:
   headless: false
-  implicit_wait: 4
   explicit_wait: 15
   page_load_timeout: 30
+  # implicit_wait is intentionally not set here: driver_factory pins it to 0
+  # so explicit WebDriverWait calls are the single source of waiting truth.
 
 # URL and accounts are environment-specific — defined in environments/<env>.yaml
 twitch:
   search_query: "StarCraft II"
   scroll_count: 2
-  scroll_amount_px: 600   # pixels per scroll action
+  scroll_amount_px: 600       # pixels per scroll action
   scroll_pause_seconds: 0.8
-  streamer_index: 0       # 0-based; 0 = first live channel in results
+  stream_buffer_seconds: 30   # max wait for the live player to start playing
+  video_wait_seconds: 20      # max wait for the <video> element to appear
 
 screenshots:
   directory: "screenshots"

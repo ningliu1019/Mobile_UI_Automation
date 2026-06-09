@@ -20,31 +20,27 @@ class SearchSteps:
         self._search.scroll_results(count)
 
     @allure.step("Select the streamer at the top of the current screen")
-    def select_top_streamer(self) -> None:
-        """Pick the streamer card at the top of the viewport after scrolling.
+    def select_top_streamer(self) -> str:
+        """Open the live streamer at the top of the viewport; return its name.
 
-        This matches the assignment spec:
-        'scroll down 2 times → select the streamer at the top of the screen display'
+        Matches the assignment spec: "scroll down 2 times → select one streamer".
         """
-        self._search.select_top_visible_streamer()
-
-    @allure.step("Get visible search results count")
-    def get_results_count(self) -> int:
-        return self._search.results_count()
+        return self._search.select_top_visible_streamer()
 
     @allure.step("Click 頻道 (Channels) tab")
     def click_channels_tab(self) -> None:
-        """Filter search results to live channels only."""
+        """Filter search results to channels."""
         self._search.click_channels_tab()
 
-    @allure.step("Search for '{query}', scroll {scroll_count} time(s), then pick top streamer")
+    @allure.step("Search '{query}', scroll {scroll_count}x, then open top streamer")
     def search_scroll_and_pick(
         self, query: str, scroll_count: int
-    ) -> None:
-        """Full search-to-streamer flow matching the assignment spec:
-        type + Enter → click 頻道 tab → scroll → select top visible streamer.
+    ) -> str:
+        """Full search-to-streamer flow (assignment spec):
+        type + Enter → click 頻道 tab → scroll → open the top live streamer.
+        Returns the chosen channel name.
         """
         self.search_for(query)
         self.click_channels_tab()
         self.scroll_results(scroll_count)
-        self.select_top_streamer()
+        return self.select_top_streamer()

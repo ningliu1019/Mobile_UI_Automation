@@ -2,7 +2,6 @@ env: production
 
 browser:
   headless: false
-  implicit_wait: 10
   explicit_wait: 20
   page_load_timeout: 30
 

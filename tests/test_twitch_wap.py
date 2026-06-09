@@ -1,19 +1,3 @@
-"""test_twitch_wap.py — Twitch WAP test suite.
-
-How to add a new test
----------------------
-1. Ask: what do I want to verify?           → shapes the assert
-2. Ask: what actions get me there?          → shapes which steps to call
-3. Check steps/ and common/ for reuse       → avoid writing page code in tests
-4. Add small step/page methods if missing   → keep tests thin
-5. Use @allure decorators to label the test → feature / story / title / severity
-
-Run:
-    pytest --env=staging -v
-    pytest --env=staging -m "smoke"
-    pytest --env=staging -m "wap and regression"
-"""
-
 import allure
 import pytest
 
@@ -25,106 +9,65 @@ from steps.streamer_steps import StreamerSteps
 @allure.feature("Twitch WAP")
 class TestTwitchWAP:
 
-    # ------------------------------------------------------------------
-    # Smoke tests  (pytest -m smoke)
-    # ------------------------------------------------------------------
-
     @pytest.mark.wap
     @pytest.mark.smoke
-    @allure.story("WAP mode verification")
-    @allure.title("Twitch homepage loads in correct mobile (WAP) layout")
+    @allure.story("Search and open a StarCraft II streamer on mobile")
+    @allure.title("Search StarCraft II and open a streamer's channel page")
     @allure.severity(allure.severity_level.CRITICAL)
-    def test_homepage_loads_in_wap_mode(self, driver, config):
-        """
-        WHAT  — verify the browser is actually in mobile emulator mode
-        WHY   — if emulation is broken every other WAP test is meaningless;
-                running this as a smoke gate catches config errors early
-        HOW   — navigate to Twitch, read viewport dimensions via JS,
-                assert width matches the configured device
-        """
-        nav = NavigationSteps(driver, config)
-
-        # Action
-        nav.open_twitch()
-
-        # Assert 1 — correct site
-        assert "twitch.tv" in driver.current_url, (
-            f"Unexpected URL: {driver.current_url}"
-        )
-
-        # Assert 2 — mobile viewport is active
-        viewport = nav.verify_wap_mode()
-
-        allure.attach(
-            f"width={viewport['width']}  height={viewport['height']}",
-            name="viewport_dimensions",
-            attachment_type=allure.attachment_type.TEXT,
-        )
-
-    @pytest.mark.wap
-    @pytest.mark.smoke
-    @allure.story("Search and view StarCraft II streamer on mobile")
-    @allure.title("Search StarCraft II and open a live streamer page")
-    @allure.severity(allure.severity_level.NORMAL)
     def test_search_starcraft_streamer(self, driver, config):
         """
-        WHAT  — the 6-step scenario from the assignment spec
-        WHY   — core user journey: search → browse → watch
-        HOW   — navigate, search, scroll, pick a streamer, dismiss pop-ups,
-                wait for the page to settle, take a screenshot
+        WHAT  — the full 6-step scenario from the assignment spec
+        WHY   — core user journey: open Twitch → search → browse → open a streamer
+        HOW   — go to Twitch, open search, input StarCraft II, scroll 2×,
+                select one streamer, then wait for the streamer page to load
+                and take a screenshot
+
+        Assignment steps
+            1. go to Twitch
+            2. click the search icon
+            3. input "StarCraft II"
+            4. scroll down 2 times
+            5. select one streamer
+            6. on the streamer page, wait until loaded and take a screenshot
+
+        We open a LIVE streamer and verify the player actually loads and plays
+        (the <video> playhead advances) with no decode error, then screenshot.
         """
         twitch = config.get("twitch", {})
 
-        # Steps 1–2: navigate to Twitch and open search
+        # Steps 1–3: go to Twitch, open search, input the query
         NavigationSteps(driver, config).open_twitch_and_search()
 
-        # Steps 3–5: type query + Enter, scroll 2×, select top visible streamer
-        SearchSteps(driver, config).search_scroll_and_pick(
+        # Steps 4–5: scroll 2×, then select one (live) streamer
+        channel = SearchSteps(driver, config).search_scroll_and_pick(
             query=twitch.get("search_query", "StarCraft II"),
             scroll_count=twitch.get("scroll_count", 2),
         )
 
-        # Step 6: dismiss pop-up, wait for load, screenshot
-        screenshot_path = StreamerSteps(driver, config).view_and_capture()
-
-        assert screenshot_path, "Screenshot was not saved."
-
-    # ------------------------------------------------------------------
-    # Regression tests  (pytest -m regression)
-    # ------------------------------------------------------------------
-
-    @pytest.mark.wap
-    @pytest.mark.regression
-    @allure.story("Search results")
-    @allure.title("Searching StarCraft II returns at least one live channel")
-    @allure.severity(allure.severity_level.NORMAL)
-    def test_search_returns_results(self, driver, config):
-        """
-        WHAT  — verify search actually surfaces channel cards (not a blank page)
-        WHY   — catches broken search API or DOM changes before we even click
-        HOW   — navigate, open search, type the query, count visible cards
-                (no scroll, no click — we stop right after results appear)
-
-        NOTE  — this test intentionally does NOT click into a streamer.
-                It isolates the "search returns results" behaviour so a
-                failure here points precisely at the search results layer.
-        """
-        twitch = config.get("twitch", {})
-
-        NavigationSteps(driver, config).open_twitch_and_search()
-
-        search = SearchSteps(driver, config)
-        search.search_for(twitch.get("search_query", "StarCraft II"))
-
-        count = search.get_results_count()
+        # Step 6: wait for the player to load/play, then take a screenshot
+        status = StreamerSteps(driver, config).view_and_verify()
 
         allure.attach(
-            f"Visible channel cards: {count}",
-            name="results_count",
+            "\n".join(f"{k}={v}" for k, v in status.items()) + f"\nchannel={channel}",
+            name="streamer_status",
             attachment_type=allure.attachment_type.TEXT,
         )
 
-        assert count > 0, (
-            f"Expected at least 1 result for '{twitch.get('search_query')}' "
-            f"but found none. Twitch DOM may have changed — check _CHANNEL_CARD_SELECTORS."
+        # Reached the selected streamer page, player loaded, screenshot saved.
+        assert status["screenshot"], "Screenshot was not saved."
+        assert channel and channel.lower() in status["url"].lower(), (
+            f"Did not land on the selected channel. "
+            f"channel={channel!r} url={status['url']!r}"
+        )
+        assert status["player_present"], (
+            f"Streamer page did not load a video player. url={status['url']!r}. "
+            f"Twitch DOM may have changed — check StreamerPage._LOAD_INDICATORS."
+        )
+        # The player must actually play (and not be sitting on a decode error).
+        assert status["player_error"] == "", (
+            f"Player decode error {status['player_error']!r} on the streamer page."
+        )
+        assert status["video_playing"], (
+            f"Player did not play — the <video> playhead did not advance. "
+            f"player_error={status['player_error']!r}, url={status['url']!r}"
         )

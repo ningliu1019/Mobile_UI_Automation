@@ -100,7 +100,7 @@ class ModalHandler(BasePage):
     def dismiss_any(self) -> None:
         """Check for all known overlays and dismiss any that are present.
 
-        Each check has a short 2s timeout — if nothing appears it moves on
+        Each check has a short 1s timeout — if nothing appears it moves on
         immediately so no time is wasted when (as is common) no pop-up shows.
         """
         self.dismiss_cookie_banner()

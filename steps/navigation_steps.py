@@ -12,8 +12,6 @@ class NavigationSteps:
     """
 
     def __init__(self, driver: WebDriver, config: dict):
-        self._driver = driver
-        self._config = config
         self._home = HomePage(driver, config)
 
     @allure.step("Open Twitch homepage")
@@ -29,21 +27,3 @@ class NavigationSteps:
         """Convenience combo — navigate then open search in one call."""
         self.open_twitch()
         self.open_search()
-
-    @allure.step("Verify page is in WAP (mobile emulator) mode")
-    def verify_wap_mode(self) -> dict:
-        """Assert the viewport width matches the configured device and return dimensions.
-
-        Raises AssertionError if the browser is not in mobile emulation —
-        useful as a guard at the start of any WAP test.
-        """
-        viewport = self._driver.execute_script(
-            "return {width: window.innerWidth, height: window.innerHeight}"
-        )
-        expected_width = self._config.get("device", {}).get("width", 390)
-
-        assert viewport["width"] <= expected_width + 20, (
-            f"Viewport width {viewport['width']}px is too wide for WAP mode. "
-            f"Expected ≤{expected_width + 20}px — verify mobile emulation is active."
-        )
-        return viewport

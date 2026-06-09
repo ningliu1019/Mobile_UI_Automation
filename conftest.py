@@ -1,4 +1,5 @@
 import os
+import sys
 
 import allure
 import pytest
@@ -36,18 +37,6 @@ def config(env) -> dict:
     return load_config(env)
 
 
-@pytest.fixture(scope="session")
-def accounts(config) -> dict:
-    """Convenience shortcut to config['accounts'].
-
-    Usage in a test or step:
-        def test_something(accounts):
-            user = accounts["test_user"]
-            # user["username"], user["password"]
-    """
-    return config.get("accounts", {})
-
-
 @pytest.fixture(scope="function")
 def driver(config):
     """Mobile-emulated Chrome WebDriver; created and quit per test function."""
@@ -83,5 +72,12 @@ def pytest_runtest_makereport(item, call):
                     name="failure_screenshot",
                     attachment_type=allure.attachment_type.PNG,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                # Don't mask the original test failure, but leave a trace so a
+                # missing failure screenshot is explainable (driver already
+                # quit, disk full, etc.) instead of vanishing silently.
+                print(
+                    f"[conftest] failure screenshot skipped for "
+                    f"{item.nodeid}: {e}",
+                    file=sys.stderr,
+                )

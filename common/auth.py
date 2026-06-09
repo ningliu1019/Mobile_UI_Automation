@@ -16,7 +16,6 @@ Usage
 
 import allure
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 
 from common.modal_handler import ModalHandler
 from pages.base_page import BasePage
@@ -41,11 +40,11 @@ class AuthActions(BasePage):
     _LOGIN_ERROR    = (By.CSS_SELECTOR, '[data-a-target="passport-login-form"] .error')
     _TWOFA_PROMPT   = (By.CSS_SELECTOR, '[data-a-target="two-factor-submit"]')
 
-    # Logged-in indicators
-    _USER_AVATAR    = (By.CSS_SELECTOR, '[data-a-target="user-menu-toggle"]')
+    # User menu toggle — doubles as the logged-in indicator (its presence
+    # means a session is active) and as the entry point to the logout menu.
+    _USER_MENU_TOGGLE = (By.CSS_SELECTOR, '[data-a-target="user-menu-toggle"]')
 
     # Logout
-    _USER_MENU      = (By.CSS_SELECTOR, '[data-a-target="user-menu-toggle"]')
     _LOGOUT_ITEM    = (By.CSS_SELECTOR, '[data-a-target="logout-button"]')
 
     # ------------------------------------------------------------------ #
@@ -79,13 +78,13 @@ class AuthActions(BasePage):
     @allure.step("Log out")
     def logout(self) -> None:
         """Open the user menu and click log out."""
-        self.wait_for_element(self._USER_MENU).click()
+        self.wait_for_element(self._USER_MENU_TOGGLE).click()
         self.wait_for_element(self._LOGOUT_ITEM).click()
 
     @allure.step("Check if user is logged in")
     def is_logged_in(self) -> bool:
         """Return True if the user-avatar / menu toggle is visible."""
-        return self.is_present(self._USER_AVATAR, timeout=5)
+        return self.is_present(self._USER_MENU_TOGGLE, timeout=5)
 
     # ------------------------------------------------------------------ #
     # Private helpers                                                      #
@@ -115,7 +114,7 @@ class AuthActions(BasePage):
     def _handle_post_login(self) -> None:
         """Wait for login to complete; raise on visible errors."""
         # Happy path — user avatar appears
-        if self.is_present(self._USER_AVATAR, timeout=10):
+        if self.is_present(self._USER_MENU_TOGGLE, timeout=10):
             return
 
         # 2-FA prompt — surface a helpful message rather than a timeout
