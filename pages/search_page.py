@@ -152,14 +152,27 @@ class SearchPage(BasePage):
         return []
 
     def _channel_url_for_card(self, card) -> str:
-        """Return the absolute HTTPS Twitch channel URL for *card*, or empty string."""
+        """Return the absolute HTTPS Twitch channel URL for *card*, or empty string.
+
+        Tries two strategies in order:
+        1. Walk up to an <a href="https://www.twitch.tv/..."> ancestor.
+        2. Parse the channel name from the live_user_<name> thumbnail src.
+           Twitch search cards use <button> elements with no href, but the
+           preview image always contains the channel name in its URL.
+        """
         return self.driver.execute_script("""
             var el = arguments[0];
             var article = el.closest('article') || el;
             var a = article.querySelector('a[href]') || el.closest('a[href]');
-            if (!a) return '';
-            var url = a.href;
-            return /^https:\\/\\/(www\\.)?twitch\\.tv\\//i.test(url) ? url : '';
+            if (a && /^https:\\/\\/(www\\.)?twitch\\.tv\\//i.test(a.href)) {
+                return a.href;
+            }
+            var img = article.querySelector('img[src*="live_user"]');
+            if (img) {
+                var m = img.src.match(/live_user_([^\\-\\/]+)/);
+                if (m && m[1]) return 'https://www.twitch.tv/' + m[1];
+            }
+            return '';
         """, card) or ""
 
     def _top_visible_card(self, cards: list):
